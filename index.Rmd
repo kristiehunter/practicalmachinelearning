@@ -1,8 +1,9 @@
 ---
 title: "Practical Machine Learning Course Project"
 author: "Kristie Hunter"
-date: "August 6, 2016"
+date: "August 9, 2016"
 ---
+
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -18,19 +19,18 @@ dataTest <- read.csv("C:/Users/Kristie/Documents/UofT/JohnHopkins/Practical Mach
 
 ## About
 
-The following program is the final course project in the Practical Machine Learning Course from Johns Hopkins University, hosted by Coursera.org.
+The following program report is the final course project in the Practical Machine Learning Course from Johns Hopkins University, hosted by Coursera.org.
 
+The data comes from the Human Activity Recognition study from the following citation source: 
 
-The data for this program comes from the Human Activity Recognition study from the following citation source: 
-
->Ugulino, W.; Cardador, D.; Vega, K.; Velloso, E.; Milidiu, R.; Fuks, H. Wearable >Computing: Accelerometers' Data Classification of Body Postures and Movements. >Proceedings of 21st Brazilian Symposium on Artificial Intelligence. Advances in >Artificial Intelligence - SBIA 2012. In: Lecture Notes in Computer Science. , pp. >52-61. Curitiba, PR: Springer Berlin / Heidelberg, 2012. ISBN 978-3-642-34458-9. >DOI: 10.1007/978-3-642-34459-6_6. 
+>Ugulino, W.; Cardador, D.; Vega, K.; Velloso, E.; Milidiu, R.; Fuks, H. Wearable Computing: Accelerometers' Data Classification of Body Postures and Movements. Proceedings of 21st Brazilian Symposium on Artificial Intelligence. Advances in Artificial Intelligence - SBIA 2012. In: Lecture Notes in Computer Science. , pp. 52-61. Curitiba, PR: Springer Berlin / Heidelberg, 2012. ISBN 978-3-642-34458-9. DOI: 10.1007/978-3-642-34459-6_6. 
 
 http://groupware.les.inf.puc-rio.br/har
 
 
 ## Data Initialization
 
-Since the Testing file has 20 cases in it, I decided to split the Training file into "training" and "testing" data sets--at 60% of the data and 40%, respectively.
+Since there is a separate testing file from the training file (for predictions), I decided to split the training file into Training and Testing data sets--at 60% of the data and 40%, respectively.  This leaves the testing file as a Validation set.
 
 
 ``` {r dataInit}
@@ -40,7 +40,7 @@ testing <- dataTrain[-inTrain,]
 dim(training); dim(testing)
 ```
 
-Taking a look at a summary of the data, and the head (shortened to the first few columns for easier viewing), it is evident that there is a wide variety of data to work from in the variables available.
+Taking a look at a summary and head of the data (shortened to a few columns in this report for easier viewing), it is evident that there is a wide range of data, both in terms of how many variables there are, and the values for each of them.
 
 ```{r dataSubset}
 smallTrain <- training[8:11] #Selected 4 columns for viewing
@@ -75,20 +75,20 @@ countAllNA <- function(dataSet, n) {
 newVars <- countAllNA(training, 160)
 ```
 
-With a subset vector of all the variables that have full data, I subset the training set with just those variables.
+With a subset vector of all the variables that have full data (no N/A values), I subset the Training data with just those variables.
 
 ```{r trainSubData}
 trainSub <- subset(training, select=newVars[8:60])
 dim(trainSub)
 ```
 
-Notably, many of the variables have been removed because they don't have enough data to work with (only 53 of 160 are part of the subset).  The first 7 variables were manually removed by choice, because they were redundant--no information that would have any impact on `classe`.
+Notably, many of the variables have been removed because they don't have enough data to work with (only 53 of 160 are part of the subset).  The first 7 variables were manually removed because they were redundant values; they had no information that would have any impact on `classe`, like *"user_name"* or *"timestamp"*.
 
 ## Visualizing the Data
 
 To get a general idea of how the data looks relative to `classe`, I generated a few different plots.
 
-``` {r trainPlots, fig.height=6, fig.width=6, echo=FALSE}
+``` {r trainPlots, fig.width=4, fig.height=4, echo=FALSE}
 featurePlot(x=trainSub[,c("roll_belt", "pitch_belt", "yaw_belt")], y=trainSub$classe, plot="pairs", main="Feature Plot by Classe")
 
 qplot(classe, yaw_arm, data=trainSub, colour=yaw_dumbbell, main="Yaw_Arm vs Classe Coloured by Yaw_Dumbbell")
@@ -98,11 +98,17 @@ qplot(classe, pitch_forearm, data=trainSub, colour=roll_forearm, main="Pitch_For
 qplot(magnet_forearm_x, magnet_forearm_y, data=trainSub, colour=magnet_forearm_z, main="Magnet_Forearm X vs Y Coloured by Z")
 ```
 
-It is evident from the plots that there is a substantial and varying amount of data to work with.
+There isn't any clear indication of a pattern given random sets of variables in the plots.  However, given that it is a classification problem--and there are 53 remaining variables to work with--the machine learning algorithms should be able to build patterns not readily evident on 2 dimensional plots.
 
 ## Building Models
 
-I chose to build two opposing models, given the number of variables and the wide range of the data.  The Random Forest model balances the highest accuracy with the tendency for overfitting, while the Boosting model uses averages of error rates (from weaker predictions) to build a stronger generalized fit.  In both models, I set `trControl` to use method `"cv"`, so that the cross-validation is built right into the model--using a fold/sub-sample rate of 5.
+I chose to build two opposing models, in order to compare methods and their effectiveness/accuracy on the number of variables, and continuous range of values associated with those variables.
+
+The **Random Forest** model balances the highest accuracy with the tendency for overfitting.  With no easily noticeable pattern in the training data, Random Forest runs the risk of creating too many subtrees.  The **Boosting** model may potentially be less accurate than the Random Forest, but it uses averages of error rates (from weaker predictions) to build a stronger, generalized fit.
+
+If the models respond with substantially different results when predicting the Testing data, then they may need to be combined to build a better model, or re-evaluated in the amount of data they work with. 
+
+In both models, I set `trControl` to use method `"cv"`, so that the cross-validation is built right into the model--using a fold/sub-sample rate of 5.
 
 ### Random Forest
 
@@ -124,15 +130,16 @@ pred2 <- predict(mod2, testing)
 
 ## Error Rates
 
-To take a look at the correct predictions, I built a table using each of the predicted results.
+To take a look at the correct predictions in the Testing data, I built a table using each of the predicted results.
 
 ``` {r predTables}
+# Random Forest Predictions
 table(pred1, testing$classe)
+# Boosting Predictions
 table(pred2, testing$classe)
 ```
 
 ### In Sample Error Rates
-
 
 Since this is a classification problem, and not one with continuous values (which would use the Mean Squared Error function), the Misclassification Errors are calculated as follows:
 
@@ -144,14 +151,18 @@ pred1Err
 pred2Err
 ```
 
-Since the Valdation set is the Out of Sample Error target, the correctness of the "testing" set predictions is the In Sample Error.  As can be noted, both are very close in their correctness and also close to the value of perfect purity (0).  This suggests that the cross-validation as part of the predictor methods was substantial enough that re-evaluating the models is unnecessary.
+Given that the Valdation set is the Out of Sample Error target, the correctness of the Testing data predictions is the In Sample Error.  As can be noted, both are very close in their correctness and also close to the value of perfect purity (0). 
+
+This suggests that the cross-validation as part of the predictor methods was substantial enough that re-evaluating the models is unnecessary.
 
 ### Out of Sample Error
 
-Given that I know there are 20 Validation test cases, the expected errors are as follows:
+Since it is known that there are 20 observations in the Validation data, the expected errors are as follows:
 
 ``` {r outErr}
+# Expected Random Forest Error
 20 * pred1Err
+# Expected Boosting Error
 20 * pred2Err
 ```
 
@@ -164,7 +175,3 @@ Given that the Random Forest model produces slightly more accurate results than 
 ``` {r validOutput}
 predict(mod1, dataTest)
 ```
-
-## Summary
-
-TBD.
