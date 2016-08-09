@@ -2,26 +2,169 @@
 title: "Practical Machine Learning Course Project"
 author: "Kristie Hunter"
 date: "August 6, 2016"
-output: html_document
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(caret)
+library(randomForest)
+library(gbm)
+library(plyr)
+
+dataTrain <- read.csv("C:/Users/Kristie/Documents/UofT/JohnHopkins/Practical Machine Learning/FinalProject/pml-training.csv", na.strings="")
+dataTest <- read.csv("C:/Users/Kristie/Documents/UofT/JohnHopkins/Practical Machine Learning/FinalProject/pml-testing.csv")
 ```
 
-[//]: R Markdown
+## About
 
-Welcome to my R Markdown document.  Currently, I have nothing to show you, but I will be uploading my project soon.  In the mean time, here are some page fillers for testing how R Markdown files work:
+The following program is the final course project in the Practical Machine Learning Course from Johns Hopkins University, hosted by Coursera.org.
 
 
-```{r faithful}
-summary(faithful)
-head(faithful)
+The data for this program comes from the Human Activity Recognition study from the following citation source: 
+
+>Ugulino, W.; Cardador, D.; Vega, K.; Velloso, E.; Milidiu, R.; Fuks, H. Wearable >Computing: Accelerometers' Data Classification of Body Postures and Movements. >Proceedings of 21st Brazilian Symposium on Artificial Intelligence. Advances in >Artificial Intelligence - SBIA 2012. In: Lecture Notes in Computer Science. , pp. >52-61. Curitiba, PR: Springer Berlin / Heidelberg, 2012. ISBN 978-3-642-34458-9. >DOI: 10.1007/978-3-642-34459-6_6. 
+
+http://groupware.les.inf.puc-rio.br/har
+
+
+## Data Initialization
+
+Since the Testing file has 20 cases in it, I decided to split the Training file into "training" and "testing" data sets--at 60% of the data and 40%, respectively.
+
+
+``` {r dataInit}
+inTrain <- createDataPartition(y = dataTrain$classe, p=0.6, list=FALSE)
+training <- dataTrain[inTrain,]
+testing <- dataTrain[-inTrain,]
+dim(training); dim(testing)
 ```
 
+Taking a look at a summary of the data, and the head (shortened to the first few columns for easier viewing), it is evident that there is a wide variety of data to work from in the variables available.
 
-------
-
-```{r view, echo=FALSE}
-plot(faithful$eruptions, faithful$waiting, col="green")
+```{r dataSubset}
+smallTrain <- training[8:11] #Selected 4 columns for viewing
+summary(smallTrain)
+head(smallTrain)
 ```
+
+Upon observing that there were a subtantial number of variables that had missing or incomplete values, I wrote a function to subset the data with only the variables that had a full set of data.
+
+```{r subFunctions}
+countNA <- function(vector) {
+  sum(is.na(vector))
+}
+
+countAllNA <- function(dataSet, n) {
+  useVars <- vector()
+  
+  for (i in 1:n) {
+    s <- countNA(dataSet[i])
+    if (s == 0) {
+      useVars <- c(useVars, names(dataSet[i]))
+    }
+  }
+  return (useVars)
+}
+
+```
+
+### Subsetting Data
+
+```{r newVars, echoFALSE}
+newVars <- countAllNA(training, 160)
+```
+
+With a subset vector of all the variables that have full data, I subset the training set with just those variables.
+
+```{r trainSubData}
+trainSub <- subset(training, select=newVars[8:60])
+dim(trainSub)
+```
+
+Notably, many of the variables have been removed because they don't have enough data to work with (only 53 of 160 are part of the subset).  The first 7 variables were manually removed by choice, because they were redundant--no information that would have any impact on `classe`.
+
+## Visualizing the Data
+
+To get a general idea of how the data looks relative to `classe`, I generated a few different plots.
+
+``` {r trainPlots, fig.height=6, fig.width=6, echo=FALSE}
+featurePlot(x=trainSub[,c("roll_belt", "pitch_belt", "yaw_belt")], y=trainSub$classe, plot="pairs", main="Feature Plot by Classe")
+
+qplot(classe, yaw_arm, data=trainSub, colour=yaw_dumbbell, main="Yaw_Arm vs Classe Coloured by Yaw_Dumbbell")
+
+qplot(classe, pitch_forearm, data=trainSub, colour=roll_forearm, main="Pitch_Forearm vs Classe Coloured by Roll_Forearm")
+
+qplot(magnet_forearm_x, magnet_forearm_y, data=trainSub, colour=magnet_forearm_z, main="Magnet_Forearm X vs Y Coloured by Z")
+```
+
+It is evident from the plots that there is a substantial and varying amount of data to work with.
+
+## Building Models
+
+I chose to build two opposing models, given the number of variables and the wide range of the data.  The Random Forest model balances the highest accuracy with the tendency for overfitting, while the Boosting model uses averages of error rates (from weaker predictions) to build a stronger generalized fit.  In both models, I set `trControl` to use method `"cv"`, so that the cross-validation is built right into the model--using a fold/sub-sample rate of 5.
+
+### Random Forest
+
+``` {r rfMod}
+mod1 <- train(classe ~ ., method="rf", data=trainSub, trControl = trainControl(method="cv"), number=5)
+print(mod1)
+
+pred1 <- predict(mod1, testing)
+```
+
+### Generalized Boosted Regression
+
+``` {r gbmMod}
+mod2 <- train(classe ~ ., method="gbm", data=trainSub, verbose=FALSE)
+print(mod2)
+
+pred2 <- predict(mod2, testing)
+```
+
+## Error Rates
+
+To take a look at the correct predictions, I built a table using each of the predicted results.
+
+``` {r predTables}
+table(pred1, testing$classe)
+table(pred2, testing$classe)
+```
+
+### In Sample Error Rates
+
+
+Since this is a classification problem, and not one with continuous values (which would use the Mean Squared Error function), the Misclassification Errors are calculated as follows:
+
+``` {r inErr}
+pred1Err <- 1 - ((sum(pred1 == testing$classe))/(dim(testing))[1])
+pred2Err <- 1 - ((sum(pred2 == testing$classe))/(dim(testing))[1])
+
+pred1Err
+pred2Err
+```
+
+Since the Valdation set is the Out of Sample Error target, the correctness of the "testing" set predictions is the In Sample Error.  As can be noted, both are very close in their correctness and also close to the value of perfect purity (0).  This suggests that the cross-validation as part of the predictor methods was substantial enough that re-evaluating the models is unnecessary.
+
+### Out of Sample Error
+
+Given that I know there are 20 Validation test cases, the expected errors are as follows:
+
+``` {r outErr}
+20 * pred1Err
+20 * pred2Err
+```
+
+In both models, there is likely one misclassification error.
+
+## Prediction
+
+Given that the Random Forest model produces slightly more accurate results than the Boosting model, I used that model to predict the validation cases.
+
+``` {r validOutput}
+predict(mod1, dataTest)
+```
+
+## Summary
+
+TBD.
